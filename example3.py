@@ -26,7 +26,7 @@ class Model(nn.Module):
 
         # create textures
         texture_size = 4
-        textures = torch.zeros(1, self.faces.shape[1], texture_size, texture_size, texture_size, 3*2, dtype=torch.float32)
+        textures = torch.zeros(1, self.faces.shape[1], texture_size, texture_size, texture_size, 30*2, dtype=torch.float32)
         self.textures = nn.Parameter(textures)
 
         # load reference image
@@ -48,7 +48,7 @@ class Model(nn.Module):
         image, _, _ = self.renderer(self.vertices, self.faces, torch.tanh(self.textures))
         
         loss = torch.sum((image[:, :3, :, :] - self.image_ref) ** 2)
-        loss += torch.sum((image[:, 3:, :, :] - self.image_ref_2) ** 2)
+        loss += torch.sum((image[:, 3:6, :, :] - self.image_ref_2) ** 2)
         return loss
 
 
@@ -89,7 +89,7 @@ def main():
         images, _, _ = model.renderer(model.vertices, model.faces, torch.tanh(model.textures))
         image = images.detach().cpu().numpy()[0].transpose((1, 2, 0))
         imsave('./tmp/_1_tmp_%04d.png' % num, image[:, :, :3])
-        imsave('./tmp/_2_tmp_%04d.png' % num, image[:, :, 3:])
+        imsave('./tmp/_2_tmp_%04d.png' % num, image[:, :, 3:6])
     # make_gif(args.filename_output)
 
 

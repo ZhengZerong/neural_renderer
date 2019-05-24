@@ -6,7 +6,7 @@ from skimage.io import imsave
 
 # import neural_renderer.cuda.create_texture_image as create_texture_image_cuda
 from torch.utils.cpp_extension import load
-create_texture_image_cuda = load(name='load_textures_cuda', 
+create_texture_image_cuda = load(name='create_texture_image_cuda', 
                                  sources=['./neural_renderer/cuda/create_texture_image_cuda.cpp', 
                                           './neural_renderer/cuda/create_texture_image_cuda_kernel.cu'], 
                                  extra_include_paths=['/usr/include/python2.7'], 

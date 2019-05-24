@@ -237,7 +237,7 @@ __global__ void forward_texture_sampling_cuda_kernel(
         }
     
         /* blend */
-        scalar_t *new_pixel = new scalar_t[ch]{0};          // 3 channels
+        scalar_t new_pixel[256] = {0};
         for (int pn = 0; pn < 8; pn++) {            // 8 interval end-points (or cubic vertices)
             scalar_t w = 1;                         // weight
             int texture_index_int[3];               // index in source (int)
@@ -260,7 +260,6 @@ __global__ void forward_texture_sampling_cuda_kernel(
         }
         for (int k = 0; k < ch; k++)                 // 3 channels
             pixel[k] = new_pixel[k];
-        delete new_pixel;
     }
 }
 
