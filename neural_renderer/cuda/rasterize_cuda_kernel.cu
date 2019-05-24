@@ -32,15 +32,19 @@ __global__ void forward_face_index_map_cuda_kernel_1(
     if (i >= batch_size * num_faces) {
         return;
     }
-    const int is = image_size;
-    const scalar_t* face = &faces[i * 9];
+    const int is = image_size;                  // height/width of output image
+    const scalar_t* face = &faces[i * 9];       // 3 (vertices), 3 (XYZ)
     scalar_t* face_inv_g = &faces_inv[i * 9];
 
-    /* return if backside */
+    /* Check if backside by calculating the cross product of these two vector: 
+       (v1.x - v0.x, v1.y - v0.y, 0), (v2.x - v0.x, v2.y - v0.y, 0)
+       and check the sign of z-coordinate: 
+       z = (v2.y - v0.y)*(v1.x - v0.x)- (v1.y - v0.y)*(v2.x - v0.x)
+    */
     if ((face[7] - face[1]) * (face[3] - face[0]) < (face[4] - face[1]) * (face[6] - face[0]))
         return;
 
-    /* p[num][xy]: x, y is normalized from [-1, 1] to [0, is - 1]. */
+    /* p[num][xy]: 3 vertices, their x, y are normalized from [-1, 1] to [0, is - 1]. */
     scalar_t p[3][2];
     for (int num = 0; num < 3; num++) {
         for (int dim = 0; dim < 2; dim++) {
@@ -48,7 +52,13 @@ __global__ void forward_face_index_map_cuda_kernel_1(
         }
     }
 
-    /* compute face_inv */
+    /* compute face_inv
+       meaning: 
+       | v1.y-v2.y, v2.x-v1.x, v1.x*v2.y - v2.x*v1.y  |
+       | v2.y-v0.y, v0.x-v2.x, v2.x*v0.y - v0.x*v2.y  | 
+       | v0.y-v1.y, v2.x-v0.x, v0.x*v1.y - v1.x*v0.y  |
+        / (v2.x*(v0.y-v1.y) + v0.x*(v1.y-v2.y) + v1.x*(v2.y-v0.y))
+    */
     scalar_t face_inv[9] = {
         p[1][1] - p[2][1], p[2][0] - p[1][0], p[1][0] * p[2][1] - p[2][0] * p[1][1],
         p[2][1] - p[0][1], p[0][0] - p[2][0], p[2][0] * p[0][1] - p[0][0] * p[2][1],
@@ -83,25 +93,31 @@ __global__ void forward_face_index_map_cuda_kernel_2(
         int return_alpha,
         int return_depth) {
 
+    /* each pixel has a thread */
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= batch_size * image_size * image_size) {
         return;
     }
-    const int is = image_size;
+    const int is = image_size;          // height/width of output image
     const int nf = num_faces;
-    const int bn = i / (is * is);
-    const int pn = i % (is * is);
-    const int yi = pn / is;
-    const int xi = pn % is;
-    const scalar_t yp = (2. * yi + 1 - is) / is;
-    const scalar_t xp = (2. * xi + 1 - is) / is;
+    const int bn = i / (is * is);       // batch id
+    const int pn = i % (is * is);       // pixel id
+    const int yi = pn / is;             // pixel y
+    const int xi = pn % is;             // pixel x
+    const scalar_t yp = (2. * yi + 1 - is) / is;    // normalized to [-1, 1]
+    const scalar_t xp = (2. * xi + 1 - is) / is;    // normalized to [-1, 1]
     
     const scalar_t* face = &faces[bn * nf * 9] - 9;
     scalar_t* face_inv = &faces_inv[bn * nf * 9] - 9;
     scalar_t depth_min = far;
     int face_index_min = -1;
-    scalar_t weight_min[3];
+    scalar_t weight_min[3];             // for 3 vertices
     scalar_t face_inv_min[9];
+
+    /* for each face
+        1. check whether the processed pixel lies in the face
+        2. check the face is visible for the pixel (by depth comparison) and save depth buffer
+    */
     for (int fn = 0; fn < nf; fn++) {
         /* go to next face */
         face += 9;
@@ -111,14 +127,14 @@ __global__ void forward_face_index_map_cuda_kernel_2(
         if ((face[7] - face[1]) * (face[3] - face[0]) < (face[4] - face[1]) * (face[6] - face[0]))
             continue;
     
-        /* check [py, px] is inside the face */
+        /* check [py, px] is inside the face (maybe can be replaced using to-left test?)*/
         if (((yp - face[1]) * (face[3] - face[0]) < (xp - face[0]) * (face[4] - face[1])) ||
             ((yp - face[4]) * (face[6] - face[3]) < (xp - face[3]) * (face[7] - face[4])) ||
             ((yp - face[7]) * (face[0] - face[6]) < (xp - face[6]) * (face[1] - face[7])))
             continue;
     
         /* compute w = face_inv * p */
-        scalar_t w[3];
+        scalar_t w[3];             // for 3 vertices
         w[0] = face_inv[3 * 0 + 0] * xi + face_inv[3 * 0 + 1] * yi + face_inv[3 * 0 + 2];
         w[1] = face_inv[3 * 1 + 0] * xi + face_inv[3 * 1 + 1] * yi + face_inv[3 * 1 + 2];
         w[2] = face_inv[3 * 2 + 0] * xi + face_inv[3 * 2 + 1] * yi + face_inv[3 * 2 + 2];
@@ -162,6 +178,7 @@ __global__ void forward_face_index_map_cuda_kernel_2(
         }
         if (return_depth) {
             for (int k = 0; k < 9; k++) {
+                /* use in depth calculation: w = face_inv * p, 1 / zp = sum(w / z) */
                 face_inv_map[9 * i + k] = face_inv_min[k];
             }
         }
@@ -183,6 +200,8 @@ __global__ void forward_texture_sampling_cuda_kernel(
         int image_size,
         int texture_size,
         scalar_t eps) {
+
+    /* each pixel has a thread */
     const int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i >= batch_size * image_size * image_size) {
         return;
@@ -199,30 +218,31 @@ __global__ void forward_texture_sampling_cuda_kernel(
         const int nf = num_faces;
         const int ts = texture_size;
         const scalar_t* face = &faces[(bn * nf + face_index) * 9];
-        const scalar_t* texture = &textures[(bn * nf + face_index) * ts * ts * ts * 3];
-        scalar_t* pixel = &rgb_map[i * 3];
-        const scalar_t* weight = &weight_map[i * 3];
+        const scalar_t* texture = &textures[(bn * nf + face_index) * ts * ts * ts * 3]; // 3 channels
+        scalar_t* pixel = &rgb_map[i * 3];              // 3 channels
+        const scalar_t* weight = &weight_map[i * 3];    // 3 vertices
         const scalar_t depth = depth_map[i];
         int32_t* sampling_indices = &sampling_index_map[i * 8];
         scalar_t* sampling_weights = &sampling_weight_map[i * 8];
     
-        /* get texture index (float) */
+        /* get texture index (float): [0, ts - 1] x 3 vertices */
         scalar_t texture_index_float[3];
-        for (int k = 0; k < 3; k++) { scalar_t tif = weight[k] * (ts - 1) * (depth / (face[3 * k + 2]));
+        for (int k = 0; k < 3; k++) { 
+            scalar_t tif = weight[k] * (ts - 1) * (depth / (face[3 * k + 2]));
             tif = max(tif, 0.);
             tif = min(tif, ts - 1 - eps);
             texture_index_float[k] = tif;
         }
     
         /* blend */
-        scalar_t new_pixel[3] = {0, 0, 0};
-        for (int pn = 0; pn < 8; pn++) {
+        scalar_t new_pixel[3] = {0, 0, 0};          // 3 channels
+        for (int pn = 0; pn < 8; pn++) {            // 8 interval end-points (or cubic vertices)
             scalar_t w = 1;                         // weight
-            int texture_index_int[3];            // index in source (int)
-            for (int k = 0; k < 3; k++) {
+            int texture_index_int[3];               // index in source (int)
+            for (int k = 0; k < 3; k++) {           // 3 directions (2^3 = 8 cubic vertices)
                 if ((pn >> k) % 2 == 0) {
                     w *= 1 - (texture_index_float[k] - (int)texture_index_float[k]);
-                    texture_index_int[k] = (int)texture_index_float[k];
+                    texture_index_int[k] = (int)texture_index_float[k];     // the coord of the current cubic vertice
                 }
                 else {
                     w *= texture_index_float[k] - (int)texture_index_float[k];
@@ -231,12 +251,12 @@ __global__ void forward_texture_sampling_cuda_kernel(
             }
     
             int isc = texture_index_int[0] * ts * ts + texture_index_int[1] * ts + texture_index_int[2];
-            for (int k = 0; k < 3; k++)
+            for (int k = 0; k < 3; k++)             // 3 channels
                 new_pixel[k] += w * texture[isc * 3 + k];
             sampling_indices[pn] = isc;
             sampling_weights[pn] = w;
         }
-        for (int k = 0; k < 3; k++)
+        for (int k = 0; k < 3; k++)                 // 3 channels
             pixel[k] = new_pixel[k];
     }
 }

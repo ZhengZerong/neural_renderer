@@ -24,7 +24,7 @@ class RasterizeFunction(Function):
         '''
         Forward pass
         '''
-        ctx.image_size = image_size
+        ctx.image_size = image_size     # Width and height of rendered images. 
         ctx.near = near
         ctx.far = far
         ctx.eps = eps
@@ -39,6 +39,8 @@ class RasterizeFunction(Function):
         ctx.batch_size, ctx.num_faces = faces.shape[:2]
 
         if ctx.return_rgb:
+            # [batch size, number of faces, texture size, texture size, texture size, 3 (RGB)]
+            # texture size: each vertice has "texture size" texture value
             textures = textures.contiguous()
             ctx.texture_size = textures.shape[2]
         else:
@@ -67,6 +69,11 @@ class RasterizeFunction(Function):
             face_inv_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3, 3).fill_(0)
         else:
             face_inv_map = torch.cuda.FloatTensor(1).fill_(0)
+
+        # 3 steps:
+        #   1) forward_face_index_map (also gets depth map)
+        #   2) forward_texture_sampling (gets an initial rgb map)
+        #   3) forward_background (adds background and gets final rgb map)
 
         face_index_map, weight_map, depth_map, face_inv_map =\
             RasterizeFunction.forward_face_index_map(ctx, faces, face_index_map,

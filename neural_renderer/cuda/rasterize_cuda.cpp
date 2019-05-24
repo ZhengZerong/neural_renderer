@@ -68,14 +68,14 @@ at::Tensor backward_depth_map_cuda(
 #define CHECK_INPUT(x) CHECK_CUDA(x); CHECK_CONTIGUOUS(x)
 
 std::vector<at::Tensor> forward_face_index_map(
-        at::Tensor faces,
-        at::Tensor face_index_map,
-        at::Tensor weight_map,
-        at::Tensor depth_map,
-        at::Tensor face_inv_map,
-        at::Tensor faces_inv,
-        int image_size,
-        float near,
+        at::Tensor faces,               // [batch, number of faces, 3 (vertices), 3 (XYZ)]
+        at::Tensor face_index_map,      // [batch, image size, image size]
+        at::Tensor weight_map,          // [batch, image size, image size, 3 (vertices)]
+        at::Tensor depth_map,           // [batch, image size, image size]
+        at::Tensor face_inv_map,        // [batch, image size, image size, 3 (vertices), 3]
+        at::Tensor faces_inv,           // torch.zeros_like(faces): [batch size, number of faces, 3 (vertices), 3 (XYZ)]
+        int image_size,                 // height/width
+        float near,                     
         float far,
         int return_rgb,
         int return_alpha,
@@ -95,15 +95,15 @@ std::vector<at::Tensor> forward_face_index_map(
 }
 
 std::vector<at::Tensor> forward_texture_sampling(
-        at::Tensor faces,
-        at::Tensor textures,
-        at::Tensor face_index_map,
-        at::Tensor weight_map,
-        at::Tensor depth_map,
-        at::Tensor rgb_map,
-        at::Tensor sampling_index_map,
-        at::Tensor sampling_weight_map,
-        int image_size,
+        at::Tensor faces,               // [batch, number of faces, 3 (vertices), 3 (XYZ)]
+        at::Tensor textures,            // [batch, number of faces, texture size, texture size, texture size, 3 (channels)]
+        at::Tensor face_index_map,      // [batch, image size, image size]
+        at::Tensor weight_map,          // [batch, image size, image size, 3 (vertices)]
+        at::Tensor depth_map,           // [batch, image size, image size]
+        at::Tensor rgb_map,             // [batch, image size, image size, 3 channels]
+        at::Tensor sampling_index_map,  // [batch, image size, image size, 8]
+        at::Tensor sampling_weight_map, // [batch, image size, image size, 8]
+        int image_size,                 // height/width
         float eps) {
 
     CHECK_INPUT(faces);
