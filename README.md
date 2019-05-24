@@ -6,6 +6,10 @@ Currently the API is the same as in the original implementation with some smalls
 
 The library is fully functional and it passes all the test cases supplied by the authors of the original library.
 Detailed documentation will be added in the near future.
+
+## TODO
+clean comments, update documentation
+
 ## Requirements
 Python 2.7+ and PyTorch 0.4.0.
 
