@@ -1,5 +1,5 @@
 #include <ATen/ATen.h>
-
+#include <torch/types.h>
 #include <cmath>
 
 #include <cuda.h>

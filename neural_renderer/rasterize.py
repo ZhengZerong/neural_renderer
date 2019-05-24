@@ -3,14 +3,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
 
-import neural_renderer.cuda.rasterize as rasterize_cuda
+# import neural_renderer.cuda.rasterize as rasterize_cuda
+from torch.utils.cpp_extension import load
+rasterize_cuda = load(name='rasterize_cuda', 
+                      sources=['./neural_renderer/cuda/rasterize_cuda.cpp', './neural_renderer/cuda/rasterize_cuda_kernel.cu'], 
+                      extra_include_paths=['/usr/include/python2.7'], 
+                      verbose=True)
 
 DEFAULT_IMAGE_SIZE = 256
 DEFAULT_ANTI_ALIASING = True
 DEFAULT_NEAR = 0.1
 DEFAULT_FAR = 100
 DEFAULT_EPS = 1e-4
-DEFAULT_BACKGROUND_COLOR = (0, 0, 0)
+DEFAULT_BACKGROUND_COLOR = 0
 
 class RasterizeFunction(Function):
     '''
@@ -25,6 +30,7 @@ class RasterizeFunction(Function):
         Forward pass
         '''
         ctx.image_size = image_size     # Width and height of rendered images. 
+        ctx.texture_channel = textures.size()[-1]
         ctx.near = near
         ctx.far = far
         ctx.eps = eps
@@ -54,7 +60,7 @@ class RasterizeFunction(Function):
         depth_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size).fill_(ctx.far)
 
         if ctx.return_rgb:
-            rgb_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 3).fill_(0)
+            rgb_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, ctx.texture_channel).fill_(0)
             sampling_index_map = torch.cuda.IntTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 8).fill_(0)
             sampling_weight_map = torch.cuda.FloatTensor(ctx.batch_size, ctx.image_size, ctx.image_size, 8).fill_(0)
         else:

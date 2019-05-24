@@ -9,7 +9,7 @@ import neural_renderer as nr
 
 
 class Renderer(nn.Module):
-    def __init__(self, image_size=256, anti_aliasing=True, background_color=[0,0,0],
+    def __init__(self, image_size=256, anti_aliasing=True, background_color=0,
                  fill_back=True, camera_mode='projection',
                  K=None, R=None, t=None, dist_coeffs=None, orig_size=1024,
                  perspective=True, viewing_angle=30, camera_direction=[0,0,1],
@@ -149,22 +149,23 @@ class Renderer(nn.Module):
         images = nr.rasterize_depth(faces, self.image_size, self.anti_aliasing)
         return images
 
-    def render_rgb(self, vertices, faces, textures, K=None, R=None, t=None, dist_coeffs=None, orig_size=None):
+    def render_rgb(self, vertices, faces, textures, K=None, R=None, t=None, dist_coeffs=None, orig_size=None, lighting=True):
         # fill back
         if self.fill_back:
             faces = torch.cat((faces, faces[:, :, list(reversed(range(faces.shape[-1])))]), dim=1).detach()
             textures = torch.cat((textures, textures.permute((0, 1, 4, 3, 2, 5))), dim=1)
 
         # lighting
-        faces_lighting = nr.vertices_to_faces(vertices, faces)
-        textures = nr.lighting(
-            faces_lighting,
-            textures,
-            self.light_intensity_ambient,
-            self.light_intensity_directional,
-            self.light_color_ambient,
-            self.light_color_directional,
-            self.light_direction)
+        if lighting and textures.size()[-1] == 3:        # 3 channels (RGB) 
+            faces_lighting = nr.vertices_to_faces(vertices, faces)
+            textures = nr.lighting(
+                faces_lighting,
+                textures,
+                self.light_intensity_ambient,
+                self.light_intensity_directional,
+                self.light_color_ambient,
+                self.light_color_directional,
+                self.light_direction)
 
         # viewpoint transformation
         if self.camera_mode == 'look_at':
@@ -192,27 +193,33 @@ class Renderer(nn.Module):
 
         # rasterization
         faces = nr.vertices_to_faces(vertices, faces)
+        if isinstance(self.background_color, (tuple, list)):  
+            background = self.background_color
+        else:
+            assert(isinstance(self.background_color, (float, int)))
+            background = [self.background_color for _ in range(textures.size()[-1])]
         images = nr.rasterize(
             faces, textures, self.image_size, self.anti_aliasing, self.near, self.far, self.rasterizer_eps,
-            self.background_color)
+            background)
         return images
 
-    def render(self, vertices, faces, textures, K=None, R=None, t=None, dist_coeffs=None, orig_size=None):
+    def render(self, vertices, faces, textures, K=None, R=None, t=None, dist_coeffs=None, orig_size=None, lighting=True):
         # fill back
         if self.fill_back:
             faces = torch.cat((faces, faces[:, :, list(reversed(range(faces.shape[-1])))]), dim=1).detach()
             textures = torch.cat((textures, textures.permute((0, 1, 4, 3, 2, 5))), dim=1)
 
         # lighting
-        faces_lighting = nr.vertices_to_faces(vertices, faces)
-        textures = nr.lighting(
-            faces_lighting,
-            textures,
-            self.light_intensity_ambient,
-            self.light_intensity_directional,
-            self.light_color_ambient,
-            self.light_color_directional,
-            self.light_direction)
+        if lighting and textures.size()[-1] == 3:        # 3 channels (RGB) 
+            faces_lighting = nr.vertices_to_faces(vertices, faces)
+            textures = nr.lighting(
+                faces_lighting,
+                textures,
+                self.light_intensity_ambient,
+                self.light_intensity_directional,
+                self.light_color_ambient,
+                self.light_color_directional,
+                self.light_direction)
 
         # viewpoint transformation
         if self.camera_mode == 'look_at':
@@ -239,8 +246,13 @@ class Renderer(nn.Module):
             vertices = nr.projection(vertices, K, R, t, dist_coeffs, orig_size)
 
         # rasterization
+        if isinstance(self.background_color, (tuple, list)):  
+            background = self.background_color
+        else:
+            assert(isinstance(self.background_color, (float, int)))
+            background = [self.background_color for _ in range(textures.size()[-1])]
         faces = nr.vertices_to_faces(vertices, faces)
         out = nr.rasterize_rgbad(
             faces, textures, self.image_size, self.anti_aliasing, self.near, self.far, self.rasterizer_eps,
-            self.background_color)
+            background)
         return out['rgb'], out['depth'], out['alpha']
