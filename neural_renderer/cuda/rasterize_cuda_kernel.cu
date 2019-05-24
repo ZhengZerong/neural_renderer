@@ -545,14 +545,14 @@ __global__ void backward_textures_cuda_kernel(
         int ts = texture_size;
         int bn = i / (is * is);    // batch number [0 -> bs]
     
-        scalar_t* grad_texture = &grad_textures[(bn * nf + face_index) * ts * ts * ts * 3];
+        scalar_t* grad_texture = &grad_textures[(bn * nf + face_index) * ts * ts * ts * 3];     // 3 channels
         scalar_t* sampling_weight_map_p = &sampling_weight_map[i * 8];
         int* sampling_index_map_p = &sampling_index_map[i * 8];
         for (int pn = 0; pn < 8; pn++) {
             scalar_t w = *sampling_weight_map_p++;
             int isc = *sampling_index_map_p++;
-            scalar_t* grad_texture_p = &grad_texture[isc * 3];
-            scalar_t* grad_rgb_map_p = &grad_rgb_map[i * 3];
+            scalar_t* grad_texture_p = &grad_texture[isc * 3];  // 3 channels
+            scalar_t* grad_rgb_map_p = &grad_rgb_map[i * 3];    // 3 channels
             for (int k = 0; k < 3; k++)
                 atomicAdd(grad_texture_p++, w * *grad_rgb_map_p++);
         }
